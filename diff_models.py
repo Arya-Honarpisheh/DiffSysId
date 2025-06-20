@@ -27,7 +27,6 @@ def Conv1d_with_init(in_channels, out_channels, kernel_size):
     nn.init.kaiming_normal_(layer.weight)
     return layer
 
-
 class DiffusionEmbedding(nn.Module):
     def __init__(self, num_steps, embedding_dim=128, projection_dim=None):
         super().__init__()
