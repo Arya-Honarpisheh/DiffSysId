@@ -86,6 +86,7 @@ class CSDI_base(nn.Module):
     def get_side_info(self, observed_tp, cond_mask):
         B, K, L = cond_mask.shape
 
+        # observed_tp is the time points or positions
         time_embed = self.time_embedding(observed_tp, self.emb_time_dim)  # (B,L,emb)
         time_embed = time_embed.unsqueeze(2).expand(-1, -1, K, -1)
         feature_embed = self.embed_layer(
@@ -125,9 +126,11 @@ class CSDI_base(nn.Module):
         noise = torch.randn_like(observed_data)
         noisy_data = (current_alpha ** 0.5) * observed_data + (1.0 - current_alpha) ** 0.5 * noise
 
+        ##### Here the parameters must be fed into the model #####
         total_input = self.set_input_to_diffmodel(noisy_data, observed_data, cond_mask)
 
         predicted = self.diffmodel(total_input, side_info, t)  # (B,K,L)
+        #####                                                #####
 
         target_mask = observed_mask - cond_mask
         residual = (noise - predicted) * target_mask
