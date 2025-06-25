@@ -125,3 +125,36 @@ def get_dataloader_LotkaVolterra(dataset, seed=0, nfold=None, batch_size=32):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, generator=g)
 
     return train_loader, valid_loader, test_loader
+
+class NormalizedDataset(Dataset):
+    def __init__(self, dataset):
+        self.dataset = dataset
+        all_x = torch.cat([sample['x'] for sample in dataset], dim=0)  # shape: (total_time_points, 2)
+        self.x_mean = all_x.mean(dim=0)   # shape: (2,)
+        self.x_std = all_x.std(dim=0)     # shape: (2,)
+
+        all_parameters = torch.stack([sample['parameters'] for sample in dataset], dim=0)
+        self.parameters_mean = all_parameters.mean(dim=0)
+        self.parameters_std = all_parameters.std(dim=0)
+
+        all_x_init = torch.stack([sample['x_init'] for sample in dataset], dim=0)
+        self.x_init_mean = all_x_init.mean(dim=0)
+        self.x_init_std = all_x_init.std(dim=0)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        sample = self.dataset[idx]
+        x = (sample['x'] - self.x_mean) / self.x_std
+        x_init = (sample['x_init'] - self.x_init_mean) / self.x_init_std
+        parameters = (sample['parameters'] - self.parameters_mean) / self.parameters_std
+        return {
+            'parameters': parameters,
+            'time': sample['time'],
+            'x_init': x_init,
+            'x': x
+        }
+
+    def get_param_stats(self):
+        return self.parameters_mean, self.parameters_std

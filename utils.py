@@ -31,7 +31,7 @@ def train(
             for batch_no, train_batch in enumerate(it, start=1):
                 optimizer.zero_grad()
 
-                loss = model(train_batch)
+                loss = model(train_batch, is_train=1)
                 loss.backward()
                 avg_loss += loss.item()
                 optimizer.step()

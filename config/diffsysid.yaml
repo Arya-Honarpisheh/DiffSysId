@@ -1,0 +1,27 @@
+
+#type: args
+
+train:
+  epochs: 100
+  batch_size: 32 
+  lr: 1.0e-3
+  itr_per_epoch: 1.0e+8
+
+
+diffusion:
+  layers: 4 
+  channels: 32
+  nheads: 4
+  diffusion_embedding_dim: 32
+  parameter_embedding_dim: 32
+  ts_embedding_dim: 32
+  time_embedding_dim: 128
+  beta_start: 0.0001
+  beta_end: 0.5
+  num_steps: 30
+  schedule: "linear"
+  is_linear: False
+
+model:
+  param_dim: 4
+  ts_dim: 2
