@@ -1,0 +1,28 @@
+
+#type: args
+
+train:
+  epochs: 100
+  batch_size: 64 
+  lr: 1.0e-3
+  itr_per_epoch: 1.0e+8
+
+
+diffusion:
+  ts_embedding_nlayers: 2 
+  ts_embedding_nheads: 4
+  ts_embedding_dim: 64
+  ts_embedding_input_proj_hidden_dims: [16, 32]
+  diffusion_embedding_dim: 16
+  parameter_embedding_dim: 32
+  parameter_embedding_hidden_dims: [8, 16]
+  output_projection_hidden_dims: [64, 32, 16, 8]
+  beta_start: 0.0001
+  beta_end: 0.5
+  num_steps: 30
+  schedule: "linear"
+  is_linear: False
+
+model:
+  param_dim: 3
+  ts_dim: 3

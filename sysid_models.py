@@ -1,28 +1,30 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from diffusion_models import noise_predictor
+from noise_predictor import noise_predictor
 
 class DiffSysId_base(nn.Module):
-    def __init__(self, ts_dim, config, device):
+    def __init__(self, config, device):
         super().__init__()
+        """
+        This Module calculates the l2 norm error between the predicted and true noise added
+        in the diffusion proccess. In training mode it calculates the error for some random
+        time step in the diffusion process, while in validation mode it calculates the error
+        as the average over all time steps.
+        B: batch size
+        K: time series dim
+        L: time series length
+        P: number of parameters
+        """
+
         self.device = device
-        self.ts_dim = ts_dim # the number of states
-
-        self.emb_time_dim = config["model"]["timeemb"]
-        self.emb_feature_dim = config["model"]["featureemb"]
-
-        self.emb_total_dim = self.emb_time_dim + self.emb_feature_dim
-        self.embed_layer = nn.Embedding(
-            num_embeddings=self.ts_dim, embedding_dim=self.emb_feature_dim
-        )
+        self.ts_dim = config["model"]["ts_dim"]  # K
+        self.param_dim = config["model"]["param_dim"] # P
 
         config_diff = config["diffusion"]
-        config_diff["side_dim"] = self.emb_total_dim
-
-        self.param_dim = config["model"]["param_dim"]
-        ### we should fix this later, it must take the noisy parameters, so it takes param_dim as an argument ###
-        self.diffmodel = noise_predictor(config_diff, self.param_dim, self.ts_dim)
+        # self.emb_time_dim = config_diff["time_embedding_dim"] # embedding dimension for time used in positional encoding
+        
+        self.diffmodel = noise_predictor(config_diff, self.param_dim, self.ts_dim, self.device)
 
         # parameters for diffusion models
         self.num_steps = config_diff["num_steps"]
@@ -35,136 +37,111 @@ class DiffSysId_base(nn.Module):
                 config_diff["beta_start"], config_diff["beta_end"], self.num_steps
             )
 
-        self.alpha_hat = 1 - self.beta
-        self.alpha = np.cumprod(self.alpha_hat)
-        self.alpha_torch = torch.tensor(self.alpha).float().to(self.device).unsqueeze(1)
-
-    def time_embedding(self, pos, d_model=128):
-        pe = torch.zeros(pos.shape[0], pos.shape[1], d_model).to(self.device)
-        position = pos.unsqueeze(2)
-        div_term = 1 / torch.pow(
-            10000.0, torch.arange(0, d_model, 2).to(self.device) / d_model
-        )
-        pe[:, :, 0::2] = torch.sin(position * div_term)
-        pe[:, :, 1::2] = torch.cos(position * div_term)
-        return pe
-
-    def get_side_info(self, observed_tp):
-        
-        B, L = observed_tp.shape
-
-        # observed_tp is the time points or positions
-        time_embed = self.time_embedding(observed_tp, self.emb_time_dim)  # (B,L,emb)
-        time_embed = time_embed.unsqueeze(2).expand(-1, -1, self.ts_dim, -1)
-        feature_embed = self.embed_layer(
-            torch.arange(self.ts_dim, device=self.device)
-        )  # (K,emb)
-        feature_embed = feature_embed.unsqueeze(0).unsqueeze(0).expand(B, L, -1, -1)
-
-        side_info = torch.cat([time_embed, feature_embed], dim=-1)  # (B,L,K,*)
-        side_info = side_info.permute(0, 3, 2, 1)  # (B,*,K,L)
-
-        return side_info
+        self.alpha_hat = 1 - self.beta # (num_steps)
+        self.alpha = np.cumprod(self.alpha_hat) # (num_steps)
+        self.alpha_torch = torch.tensor(self.alpha).float().to(self.device).unsqueeze(1) # (num_steps, 1)
 
     def calc_loss_valid(
-        self, observed_data, parameters, side_info, is_train
+        self, observed_data, parameters, observed_tp, is_train
     ):
         loss_sum = 0
         for t in range(self.num_steps):  # calculate loss for all t
             loss = self.calc_loss(
-                observed_data, parameters, side_info, is_train, set_t=t
+                observed_data, parameters, observed_tp, is_train, set_t=t
             )
             loss_sum += loss.detach()
         return loss_sum / self.num_steps
 
     def calc_loss(
-        self, observed_data, parameters, side_info, is_train, set_t=-1
+        self, observed_data, parameters, observed_tp, is_train, set_t=-1
     ):
         B, K, L = observed_data.shape
         if is_train != 1:  # for validation
-            t = (torch.ones(B) * set_t).long().to(self.device)
+            t = (torch.ones(B) * set_t).long().to(self.device) # (B)
         else:
-            t = torch.randint(0, self.num_steps, [B]).to(self.device)
-        current_alpha = self.alpha_torch[t]  # (B,1)
+            # for training, we do not need to pass the argument set_t.
+            t = torch.randint(0, self.num_steps, [B]).to(self.device) # (B)
+        # note that t is a tensor of dimension (B). Thus, we can use advanced indexing to get
+        # alpha for each sample in the batch.
+        current_alpha = self.alpha_torch[t]  # (B, 1)
 
-        noise = torch.randn(B, self.param_dim).to(self.device) # (B,param_dim)
-        noisy_parameters = (current_alpha ** 0.5) * parameters + (1.0 - current_alpha) ** 0.5 * noise
+        noise = torch.randn(B, self.param_dim).to(self.device) # (B, P)
+        noisy_parameters = (current_alpha ** 0.5) * parameters + (1.0 - current_alpha) ** 0.5 * noise # (B, P)
 
-        predicted = self.diffmodel(noisy_parameters, observed_data, side_info, t)  # (B, param_dim)
+        predicted = self.diffmodel(noisy_parameters, observed_data, observed_tp, t)  # (B, P)
 
         # expand noise along the time dimension
         residual = noise - predicted
         loss = (residual ** 2).mean()
         return loss
 
-    def identify(self, observed_data, side_info, n_samples):
+    def identify(self, observed_data, observed_tp, n_samples):
         B, K, L = observed_data.shape
 
-        generated_params = torch.zeros(B, n_samples, self.param_dim).to(self.device) # (B, nsample, param_dim)
+        generated_parameters = torch.zeros(B, n_samples, self.param_dim).to(self.device) # (B, nsample, P)
 
         for i in range(n_samples):
 
-            current_params = torch.randn(B, self.param_dim).to(self.device) # (B, param_dim)
+            current_parameters = torch.randn(B, self.param_dim).to(self.device) # (B, P)
 
             for t in range(self.num_steps - 1, -1, -1):
 
-                predicted = self.diffmodel(current_params, observed_data, side_info, torch.tensor([t]).to(self.device)) # (B, param_dim)
+                diffusion_step = (torch.ones(B) * t).long().to(self.device) # (B)
+
+                predicted = self.diffmodel(current_parameters, observed_data, observed_tp, diffusion_step) # (B, P)
 
                 coeff1 = 1 / self.alpha_hat[t] ** 0.5
                 coeff2 = (1 - self.alpha_hat[t]) / (1 - self.alpha[t]) ** 0.5
-                current_params = coeff1 * (current_params - coeff2 * predicted)
+                current_parameters = coeff1 * (current_parameters - coeff2 * predicted)
 
                 if t > 0:
-                    noise = torch.randn_like(current_params)  # (B, param_dim, L)
+                    noise = torch.randn_like(current_parameters)  # (B, P)
                     sigma = (
                         (1.0 - self.alpha[t - 1]) / (1.0 - self.alpha[t]) * self.beta[t]
                     ) ** 0.5
-                    current_params += sigma * noise
+                    current_parameters += sigma * noise # (B, P)
 
-            generated_params[:, i] = current_params.detach()
-        return generated_params
+            generated_parameters[:, i] = current_parameters.detach() # (B, P)
+
+        return generated_parameters # (B, nsample, P)
 
     def forward(self, batch, is_train=1):
         (
-            observed_tp,
-            observed_data,
-            observed_params
+            observed_tp, # (B, L)
+            observed_data, # (B, K, L)
+            observed_params # (B, P)
         ) = self.process_data(batch)
-
-        side_info = self.get_side_info(observed_tp)
 
         loss_func = self.calc_loss if is_train == 1 else self.calc_loss_valid
 
-        return loss_func(observed_data, observed_params, side_info, is_train)
+        return loss_func(observed_data, observed_params, observed_tp, is_train)
 
     def evaluate(self, batch, n_samples):
         (
-            observed_tp,
-            observed_data,
+            observed_tp, # (B, L)
+            observed_data, # (B, K, L)
             _
         ) = self.process_data(batch)
 
         with torch.no_grad():
 
-            side_info = self.get_side_info(observed_tp)
-
-            identified_parameters = self.identify(observed_data, side_info, n_samples)
+            identified_parameters = self.identify(observed_data, observed_tp, n_samples) # (B, nsample, P)
 
         return identified_parameters, observed_data, observed_tp
     
-class DiffSysId_LV(DiffSysId_base):
-    def __init__(self, config, device, ts_dim=2):
-        super(DiffSysId_LV, self).__init__(ts_dim, config, device)
+class DiffSysId(DiffSysId_base):
+    def __init__(self, config, device):
+        super().__init__(config, device)
 
     def process_data(self, batch):
-        observed_data = batch["x"].to(self.device).float()
-        observed_tp = batch["time"].to(self.device).float()
-        observed_params = batch["parameters"].to(self.device).float()
+        observed_data = batch["x"].to(self.device).float() # (B, L, 2)
+        observed_tp = batch["time"].to(self.device).float() # (B, L)
+        observed_params = batch["parameters"].to(self.device).float() # (B, 4)
 
-        observed_data = observed_data.permute(0, 2, 1) # (B, K, L)
+        observed_data = observed_data.permute(0, 2, 1) # (B, 2, L)
 
         return (
-            observed_tp,
-            observed_data,
-            observed_params
+            observed_tp, # (B, L)
+            observed_data, # (B, 2, L)
+            observed_params # (B, 4)
         )

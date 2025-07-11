@@ -1,0 +1,21 @@
+noise_snr:
+- 20
+- 20
+parameters_high:
+- 3.0
+- 0.5
+- 0.5
+- 3.0
+parameters_low:
+- 0.1
+- 0.01
+- 0.01
+- 0.1
+seed: 0
+seq_len: 60
+x_init_high:
+- 100
+- 50
+x_init_low:
+- 20
+- 5
