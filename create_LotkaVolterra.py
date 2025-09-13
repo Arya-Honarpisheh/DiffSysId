@@ -1,5 +1,5 @@
 
-from dataset_LotkaVolterra import LotkaVolterraDataset
+from datasets import LotkaVolterraDataset
 import torch
 import os
 import yaml

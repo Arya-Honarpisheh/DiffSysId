@@ -6,7 +6,7 @@ import os
 import time
 
 from sysid_models import *
-from dataset_general import *
+from datasets import *
 from utils import train, evaluate
 
 parser = argparse.ArgumentParser(description="DiffSYsId")

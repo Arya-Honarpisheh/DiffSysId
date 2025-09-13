@@ -1,5 +1,5 @@
 
-from dataset_Lorenz import LorenzDataset
+from datasets import LorenzDataset
 import torch
 import os
 import yaml
