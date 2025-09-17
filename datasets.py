@@ -84,11 +84,14 @@ class LotkaVolterraDataset(Dataset):
             # apply logarithm to the data
             x1 = np.log(x1)
             x2 = np.log(x2)
-            # add noise to the data based on the signal to noise ratio
-            noise_std1 = - np.log(1 - 1 / config['noise_snr'][0])
-            noise_std2 = - np.log(1 - 1 / config['noise_snr'][1])
-            x1 += np.random.normal(0, noise_std1, size=x1.shape)
-            x2 += np.random.normal(0, noise_std2, size=x2.shape)
+            # add multiplicative lognormal noise based on the signal to noise ratio
+            # noise_std = sqrt(ln(1 + 1/SNR)), noise_mean = -sigma^2/2 to remove bias
+            noise_std1 = np.sqrt(np.log(1 + 1 / config['noise_snr'][0]))
+            noise_std2 = np.sqrt(np.log(1 + 1 / config['noise_snr'][1]))
+            noise_mean1 = -noise_std1**2 / 2
+            noise_mean2 = -noise_std2**2 / 2
+            x1 += np.random.normal(noise_mean1, noise_std1, size=x1.shape)
+            x2 += np.random.normal(noise_mean2, noise_std2, size=x2.shape)
             # turn back the data to linear scale
             x1 = np.exp(x1)
             x2 = np.exp(x2)

@@ -21,9 +21,7 @@ parser.add_argument("--nsample", type=int, default=100)
 parser.add_argument("--model", type=str, default="LotkaVolterra")
 parser.add_argument("--dataset", type=str, default="data/LotkaVolterra_S_10000_T_20.0_dt_0.001_seq_len_60_seed_0/dataset.pt")
 parser.add_argument("--config", type=str, default="LotkaVolterra.yaml")
-# parser.add_argument("--model", type=str, default="Lorenz")
-# parser.add_argument("--dataset", type=str, default="data/Lorenz_S_10000_T_20.0_dt_0.001_seq_len_100_seed_0/dataset.pt")
-# parser.add_argument("--config", type=str, default="Lorenz.yaml")
+
 
 args = parser.parse_args()
 print(args)
@@ -33,6 +31,7 @@ dataset = torch.load(args.dataset, weights_only=False)
 # normalize time series values and parameters
 dataset = NormalizedDataset(dataset)
 
+# training the model
 if args.modelfolder == "":
 
     path = "config/" + args.config
@@ -54,8 +53,10 @@ if args.modelfolder == "":
         nfold=args.nfold,
         batch_size=config["train"]["batch_size"])
 
+    # specify the model
     model = DiffSysId(config, args.device).to(args.device)
 
+    # train the model
     start_time = time.time()
     train(
         model,
@@ -96,4 +97,12 @@ parameters = parameters * std + mean
 print("Identified Parameters: ", identified_parameters[0])
 print("Parameters: ", parameters[0])
 
-# evaluate(model, test_loader, nsample=args.nsample, scaler=1, foldername=foldername)
+
+# evaluate(model, test_loader, nsample=args.nsample, scaler=1, foldername="./save/" + args.modelfolder + "/")
+# Note: The evaluate function in utils.py is designed for time series imputation, not system identification
+# The main evaluation results (identified parameters vs true parameters) are already displayed above
+
+
+
+
+

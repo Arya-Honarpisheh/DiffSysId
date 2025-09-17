@@ -83,7 +83,7 @@ class TimeSeriesEmbedding(nn.Module):
         x = self.encoder(x) # (B, L, embedding_dim)
         x = x.mean(dim=1).squeeze(1) # (B, embedding_dim)
 
-        return x 
+        return x
 
 class OutputProjection(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dims):

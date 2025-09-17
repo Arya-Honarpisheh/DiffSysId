@@ -134,14 +134,14 @@ class DiffSysId(DiffSysId_base):
         super().__init__(config, device)
 
     def process_data(self, batch):
-        observed_data = batch["x"].to(self.device).float() # (B, L, 2)
+        observed_data = batch["x"].to(self.device).float() # (B, L, K)
         observed_tp = batch["time"].to(self.device).float() # (B, L)
-        observed_params = batch["parameters"].to(self.device).float() # (B, 4)
+        observed_params = batch["parameters"].to(self.device).float() # (B, P)
 
-        observed_data = observed_data.permute(0, 2, 1) # (B, 2, L)
+        observed_data = observed_data.permute(0, 2, 1) # (B, K, L)
 
         return (
             observed_tp, # (B, L)
-            observed_data, # (B, 2, L)
-            observed_params # (B, 4)
+            observed_data, # (B, K, L)
+            observed_params # (B, P)
         )
