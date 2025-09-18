@@ -24,7 +24,6 @@ parser.add_argument("--config", type=str, default="LotkaVolterra.yaml")
 
 
 args = parser.parse_args()
-print(args)
 
 # Load Data
 dataset = torch.load(args.dataset, weights_only=False)
@@ -87,6 +86,7 @@ print(f"Number of trainable parameters: {num_params}")
 
 model.eval()
 batch = next(iter(test_loader))
+
 # Evaluate the model
 identified_parameters, _, _ = model.evaluate(batch, n_samples=args.nsample) # (B, nsample, param_dim)
 mean = dataset.parameters_mean.to(args.device)
